@@ -3,3 +3,4 @@ mediapipe==0.10.20
 numpy==1.23.5
 pyautogui==0.9.53
 streamlit==1.25.0
+pyvirtualdisplay==3.0
