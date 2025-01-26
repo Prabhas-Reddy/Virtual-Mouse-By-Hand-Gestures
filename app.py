@@ -1,19 +1,15 @@
 import cv2
 import mediapipe as mp
 import numpy as np
-from pynput.mouse import Controller, Button
+import pyautogui
 import streamlit as st
-import time  # Ensure this is included
-
+import time
 
 # Constants
 WIDTH, HEIGHT = 640, 480
 FRAME_REDUCTION = 100
 SMOOTHENING = 7
 CLICK_DISTANCE = 40
-
-# Initialize mouse controller
-mouse = Controller()
 
 class HandDetector:
     def __init__(self, maxHands=1, detectionCon=0.7, trackCon=0.7):
@@ -112,14 +108,14 @@ def main():
                     y3 = np.interp(y1, (FRAME_REDUCTION, HEIGHT - FRAME_REDUCTION), (0, screenHeight))
                     clocX = plocX + (x3 - plocX) / SMOOTHENING
                     clocY = plocY + (y3 - plocY) / SMOOTHENING
-                    mouse.position = (screenWidth - clocX, clocY)
+                    pyautogui.moveTo(screenWidth - clocX, clocY)
                     plocX, plocY = clocX, clocY
 
                 # Click the mouse
                 if fingers[1] == 1 and fingers[2] == 1:  # Index and middle fingers are up
                     length = detector.findDistance(8, 12, img)
                     if length < CLICK_DISTANCE:
-                        mouse.click(Button.left, 1)
+                        pyautogui.click()
 
             cTime = time.time()
             fps = 1 / (cTime - pTime)
