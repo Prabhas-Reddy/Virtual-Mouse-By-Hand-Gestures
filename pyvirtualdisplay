@@ -1,0 +1,13 @@
+from pyvirtualdisplay import Display
+
+# Start a virtual display
+display = Display(visible=False, size=(1920, 1080))
+display.start()
+
+import cv2
+import mediapipe as mp
+import numpy as np
+from pynput.mouse import Controller, Button
+import pyautogui
+import streamlit as st
+import time
