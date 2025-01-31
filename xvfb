@@ -1,0 +1,23 @@
+# Use an official Python runtime as a parent image
+FROM python:3.9-slim
+
+# Install system dependencies (Xvfb)
+RUN apt-get update && apt-get install -y \
+    xvfb \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up a virtual display
+ENV DISPLAY=:99
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the application code
+COPY . .
+
+# Expose the port Streamlit runs on
+EXPOSE 8501
+
+# Start Xvfb and run the Streamlit app
+CMD Xvfb :99 -screen 0 1920x1080x24 & streamlit run app.py
