@@ -10,7 +10,6 @@ WIDTH, HEIGHT = 640, 480
 FRAME_REDUCTION = 100
 SMOOTHENING = 7
 CLICK_DISTANCE = 40
-ZOOM_THRESHOLD = 100
 
 # Initialize mouse controller
 mouse = Controller()
@@ -81,16 +80,21 @@ def main():
     run = st.checkbox("Run Virtual Mouse")
 
     if run:
-        pTime = 0
+        pTime = time.time()
         plocX, plocY = 0, 0
         clocX, clocY = 0, 0
-        zoom_level = 1.0
 
-        cap = cv2.VideoCapture(0)
-        cap.set(3, WIDTH)
-        cap.set(4, HEIGHT)
+        if "cap" not in st.session_state:
+            st.session_state.cap = cv2.VideoCapture(0)
+        cap = st.session_state.cap
+
+        if not cap.isOpened():
+            st.error("Cannot access webcam. Please ensure it is connected and try again.")
+            return
+
         detector = HandDetector(maxHands=1)
-        screenWidth, screenHeight = st.sidebar.slider("Screen Width", 1280, 1920, 1920), st.sidebar.slider("Screen Height", 720, 1080, 1080)
+        screenWidth = st.sidebar.slider("Screen Width", 1280, 1920, 1920)
+        screenHeight = st.sidebar.slider("Screen Height", 720, 1080, 1080)
 
         frame_placeholder = st.empty()
 
@@ -106,7 +110,6 @@ def main():
             if lmList:
                 fingers = detector.fingersUp()
                 x1, y1 = lmList[8][1:]  # Index finger tip
-                x2, y2 = lmList[4][1:]  # Thumb tip
 
                 # Move the cursor
                 if fingers[1] == 1 and fingers[2] == 0:  # Index finger is up
@@ -123,18 +126,12 @@ def main():
                     if length < CLICK_DISTANCE:
                         mouse.click(Button.left, 1)
 
-                # Zoom in/out
-                if fingers[0] == 1 and fingers[1] == 1:  # Thumb and index finger are up
-                    length = detector.findDistance(4, 8, img)
-                    if length > ZOOM_THRESHOLD:
-                        zoom_level += 0.1
-                    elif length < ZOOM_THRESHOLD:
-                        zoom_level -= 0.1
-                    zoom_level = max(0.1, min(zoom_level, 3.0))  # Limit zoom level between 0.1x and 3.0x
-                    img = cv2.resize(img, None, fx=zoom_level, fy=zoom_level, interpolation=cv2.INTER_LINEAR)
-
             cTime = time.time()
-            fps = 1 / (cTime - pTime)
+            time_diff = cTime - pTime
+            if time_diff > 0:
+                fps = 1 / time_diff
+            else:
+                fps = 0
             pTime = cTime
 
             # Streamlit display
