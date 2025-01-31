@@ -1,7 +1,7 @@
 import cv2
 import mediapipe as mp
 import numpy as np
-from pynput.mouse import Controller, Button
+import pyautogui  # Replaced pynput with pyautogui
 import streamlit as st
 import time
 
@@ -10,9 +10,6 @@ WIDTH, HEIGHT = 640, 480
 FRAME_REDUCTION = 100
 SMOOTHENING = 7
 CLICK_DISTANCE = 40
-
-# Initialize mouse controller
-mouse = Controller()
 
 class HandDetector:
     def __init__(self, maxHands=1, detectionCon=0.7, trackCon=0.7):
@@ -80,21 +77,15 @@ def main():
     run = st.checkbox("Run Virtual Mouse")
 
     if run:
-        pTime = time.time()
+        pTime = 0
         plocX, plocY = 0, 0
         clocX, clocY = 0, 0
 
-        if "cap" not in st.session_state:
-            st.session_state.cap = cv2.VideoCapture(0)
-        cap = st.session_state.cap
-
-        if not cap.isOpened():
-            st.error("Cannot access webcam. Please ensure it is connected and try again.")
-            return
-
+        cap = cv2.VideoCapture(0)
+        cap.set(3, WIDTH)
+        cap.set(4, HEIGHT)
         detector = HandDetector(maxHands=1)
-        screenWidth = st.sidebar.slider("Screen Width", 1280, 1920, 1920)
-        screenHeight = st.sidebar.slider("Screen Height", 720, 1080, 1080)
+        screenWidth, screenHeight = pyautogui.size()  # Get screen size
 
         frame_placeholder = st.empty()
 
@@ -117,14 +108,14 @@ def main():
                     y3 = np.interp(y1, (FRAME_REDUCTION, HEIGHT - FRAME_REDUCTION), (0, screenHeight))
                     clocX = plocX + (x3 - plocX) / SMOOTHENING
                     clocY = plocY + (y3 - plocY) / SMOOTHENING
-                    mouse.position = (screenWidth - clocX, clocY)
+                    pyautogui.moveTo(screenWidth - clocX, clocY)  # Use pyautogui to move the mouse
                     plocX, plocY = clocX, clocY
 
                 # Click the mouse
                 if fingers[1] == 1 and fingers[2] == 1:  # Index and middle fingers are up
                     length = detector.findDistance(8, 12, img)
                     if length < CLICK_DISTANCE:
-                        mouse.click(Button.left, 1)
+                        pyautogui.click()  # Use pyautogui to click the mouse
 
             cTime = time.time()
             time_diff = cTime - pTime
