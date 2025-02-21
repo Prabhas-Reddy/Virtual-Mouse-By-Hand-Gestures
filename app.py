@@ -1,135 +1,95 @@
 import cv2
 import mediapipe as mp
-import numpy as np
-import pyautogui  # Replaced pynput with pyautogui
+import pyautogui
 import streamlit as st
-import time
+import numpy as np
 
-# Constants
-WIDTH, HEIGHT = 640, 480
-FRAME_REDUCTION = 100
-SMOOTHENING = 7
-CLICK_DISTANCE = 40
+# Initialize MediaPipe Hands
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.7)
+mp_drawing = mp.solutions.drawing_utils
 
-class HandDetector:
-    def __init__(self, maxHands=1, detectionCon=0.7, trackCon=0.7):
-        self.maxHands = maxHands
-        self.detectionCon = detectionCon
-        self.trackCon = trackCon
-        self.mpHands = mp.solutions.hands
-        self.hands = self.mpHands.Hands(
-            max_num_hands=self.maxHands,
-            min_detection_confidence=self.detectionCon,
-            min_tracking_confidence=self.trackCon
-        )
-        self.mpDraw = mp.solutions.drawing_utils
-        self.lmList = []
+# Streamlit app
+st.title("Virtual Mouse using Hand Gestures")
 
-    def findHands(self, img, draw=True):
-        imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        self.results = self.hands.process(imgRGB)
-        if self.results.multi_hand_landmarks:
-            for handLms in self.results.multi_hand_landmarks:
-                if draw:
-                    self.mpDraw.draw_landmarks(img, handLms, self.mpHands.HAND_CONNECTIONS)
-        return img
+# Initialize webcam
+cap = cv2.VideoCapture(0)
 
-    def findPosition(self, img):
-        self.lmList = []
-        if self.results.multi_hand_landmarks:
-            for id, lm in enumerate(self.results.multi_hand_landmarks[0].landmark):
-                h, w, _ = img.shape
-                cx, cy = int(lm.x * w), int(lm.y * h)
-                self.lmList.append([id, cx, cy])
-        return self.lmList
+# Streamlit placeholder for video feed
+frame_placeholder = st.empty()
 
-    def fingersUp(self):
-        if not self.lmList:
-            return []
-        fingers = []
-        if self.lmList[4][1] > self.lmList[3][1]:  # Thumb
-            fingers.append(1)
-        else:
-            fingers.append(0)
-        for i in range(1, 5):  # Other fingers
-            if self.lmList[8 + 4 * (i - 1)][2] < self.lmList[6 + 4 * (i - 1)][2]:
-                fingers.append(1)
-            else:
-                fingers.append(0)
-        return fingers
+# Screen dimensions
+screen_width, screen_height = pyautogui.size()
 
-    def findDistance(self, p1, p2, img, draw=True):
-        x1, y1 = self.lmList[p1][1:]
-        x2, y2 = self.lmList[p2][1:]
-        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+# Variables for smoothing cursor movement
+smoothening = 5
+plocX, plocY = 0, 0
+clocX, clocY = 0, 0
 
-        if draw:
-            cv2.line(img, (x1, y1), (x2, y2), (255, 0, 255), 2)
-            cv2.circle(img, (x1, y1), 5, (255, 0, 255), cv2.FILLED)
-            cv2.circle(img, (x2, y2), 5, (255, 0, 255), cv2.FILLED)
-            cv2.circle(img, (cx, cy), 5, (0, 0, 255), cv2.FILLED)
-        length = np.hypot(x2 - x1, y2 - y1)
+# Function to detect hand landmarks and control the mouse
+def virtual_mouse(frame):
+    global plocX, plocY
 
-        return length
+    # Flip the frame horizontally for a later selfie-view display
+    frame = cv2.flip(frame, 1)
 
-def main():
-    st.title("AI Virtual Mouse using Hand Gestures")
-    run = st.checkbox("Run Virtual Mouse")
+    # Convert the BGR image to RGB
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    if run:
-        pTime = 0
-        plocX, plocY = 0, 0
-        clocX, clocY = 0, 0
+    # Process the frame and get hand landmarks
+    results = hands.process(rgb_frame)
 
-        cap = cv2.VideoCapture(0)
-        cap.set(3, WIDTH)
-        cap.set(4, HEIGHT)
-        detector = HandDetector(maxHands=1)
-        screenWidth, screenHeight = pyautogui.size()  # Get screen size
+    if results.multi_hand_landmarks:
+        for hand_landmarks in results.multi_hand_landmarks:
+            # Draw hand landmarks on the frame
+            mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-        frame_placeholder = st.empty()
+            # Get the coordinates of the index finger tip (landmark 8)
+            index_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+            index_finger_x = int(index_finger_tip.x * frame.shape[1])
+            index_finger_y = int(index_finger_tip.y * frame.shape[0])
 
-        while cap.isOpened():
-            success, img = cap.read()
-            if not success:
-                st.warning("Failed to read from webcam.")
-                break
+            # Get the coordinates of the thumb tip (landmark 4)
+            thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
+            thumb_x = int(thumb_tip.x * frame.shape[1])
+            thumb_y = int(thumb_tip.y * frame.shape[0])
 
-            img = detector.findHands(img)
-            lmList = detector.findPosition(img)
+            # Move the mouse cursor
+            clocX = plocX + (index_finger_x - plocX) / smoothening
+            clocY = plocY + (index_finger_y - plocY) / smoothening
+            pyautogui.moveTo(screen_width - clocX * screen_width / frame.shape[1], clocY * screen_height / frame.shape[0])
+            plocX, plocY = clocX, clocY
 
-            if lmList:
-                fingers = detector.fingersUp()
-                x1, y1 = lmList[8][1:]  # Index finger tip
+            # Check for left click (thumb and index finger close)
+            if abs(index_finger_x - thumb_x) < 20 and abs(index_finger_y - thumb_y) < 20:
+                pyautogui.click()
 
-                # Move the cursor
-                if fingers[1] == 1 and fingers[2] == 0:  # Index finger is up
-                    x3 = np.interp(x1, (FRAME_REDUCTION, WIDTH - FRAME_REDUCTION), (0, screenWidth))
-                    y3 = np.interp(y1, (FRAME_REDUCTION, HEIGHT - FRAME_REDUCTION), (0, screenHeight))
-                    clocX = plocX + (x3 - plocX) / SMOOTHENING
-                    clocY = plocY + (y3 - plocY) / SMOOTHENING
-                    pyautogui.moveTo(screenWidth - clocX, clocY)  # Use pyautogui to move the mouse
-                    plocX, plocY = clocX, clocY
+            # Check for right click (middle finger and index finger close)
+            middle_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
+            middle_finger_x = int(middle_finger_tip.x * frame.shape[1])
+            middle_finger_y = int(middle_finger_tip.y * frame.shape[0])
+            if abs(index_finger_x - middle_finger_x) < 20 and abs(index_finger_y - middle_finger_y) < 20:
+                pyautogui.rightClick()
 
-                # Click the mouse
-                if fingers[1] == 1 and fingers[2] == 1:  # Index and middle fingers are up
-                    length = detector.findDistance(8, 12, img)
-                    if length < CLICK_DISTANCE:
-                        pyautogui.click()  # Use pyautogui to click the mouse
+    return frame
 
-            cTime = time.time()
-            time_diff = cTime - pTime
-            if time_diff > 0:
-                fps = 1 / time_diff
-            else:
-                fps = 0
-            pTime = cTime
+# Main loop to capture video and process frames
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        st.write("Failed to capture video.")
+        break
 
-            # Streamlit display
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            frame_placeholder.image(img, channels="RGB")
+    # Process the frame for virtual mouse
+    processed_frame = virtual_mouse(frame)
 
-        cap.release()
+    # Display the processed frame in the Streamlit app
+    frame_placeholder.image(processed_frame, channels="BGR")
 
-if __name__ == "__main__":
-    main()
+    # Break the loop if 'q' is pressed
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# Release the webcam and close all OpenCV windows
+cap.release()
+cv2.destroyAllWindows()
